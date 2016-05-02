@@ -373,7 +373,7 @@ class Ship(object):
         if shift in ["++", "+"]:
             y_start = len(blank) - len(sub)
             x_start = len(blank[0]) - len(sub[0])
-        elif shift in ["--", "-", ""]:
+        elif shift in ["--", "-", ""]: # "" is the single point case 
             y_start = 0
             x_start = 0
         elif shift == "+-":
@@ -382,8 +382,6 @@ class Ship(object):
         elif shift == "-+":
             y_start = len(blank) - len(sub)
             x_start = 0
-        else:
-            print ":P", shift
 
         # take the elements from the sub matrix and place them at 
         # appropriate coordinate
