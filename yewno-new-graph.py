@@ -160,6 +160,43 @@ class Cuboid(object):
         for _, _, mine in self.mine_locations:
             mine.update_depth()
 
+    def find_element_bounds(self, ship):
+        ml = self.mine_locations[:]
+        ml.append((ship.x, ship.y, ship))
+
+        x_range = sorted(ml, key=lambda c: c[X_INDEX])
+        x_max = x_range[-1]
+        x_min = x_range[0]
+
+
+        y_range = sorted(ml, key=lambda c: c[Y_INDEX])
+        y_max = y_range[-1]
+        y_min = y_range[0]
+
+        return (x_min, x_max), (y_min, y_max)
+
+    def calculate_shift(self, ship):
+        x = y = 0
+        xs = ''
+        ys = ''
+        for mine in self.mine_locations:
+            temp = mine[X_INDEX] - ship.x
+            if abs(temp) > x:
+                x = abs(temp)
+                if temp < 0:
+                    xs = '-'
+                else:
+                    xs = '+'
+
+            temp = mine[Y_INDEX] - ship.y
+            if abs(temp)> y:
+                y = abs(temp)
+                if temp < 0:
+                    ys = '-'
+                else:
+                    ys = '+'
+        return xs+ys, (x * 2 + 1, y * 2 + 1)
+
 
 class Cubby(object):
     """
@@ -240,9 +277,9 @@ class Ship(object):
 
     def __init__(self, cuboid, script_file, show_ship=False):
 
-        self.cuboid = cuboid
+        self.cuboid    = cuboid
         self.show_ship = show_ship
-        self.commands = map(lambda c: c.strip(), script_file.readlines())
+        self.commands  = map(lambda c: c.strip(), script_file.readlines())
 
         # set the ship at the center of the cuboid zero depth
         self.x = cuboid.dimensions[0]/2 
@@ -251,8 +288,8 @@ class Ship(object):
         self.current_cubby = self.cuboid.matrix[self.y][self.x]
 
         # Variables for scoring
-        self.number_of_vollys_fired = 0
-        self.number_of_moves_made = 0
+        self.number_of_moves_made    = 0
+        self.number_of_vollys_fired  = 0
         self.number_of_initial_mines = len(self.cuboid.mine_locations)
         self.number_of_commands_left = len(self.commands)
         self.starting_score = 10 * self.number_of_initial_mines
@@ -264,9 +301,82 @@ class Ship(object):
     def radar(self):
         """
         Radar takes the graph and joins the rows into a nice string
+
+        ....c       x, y
+        ...#.    a (0, 2)-+
+        a....    b (2, 4) |- Points that must be show in graph MARKERS
+        .....    # (3, 1) |
+        ..b..    c (4, 0)-+
+
+        Find the smallest region bounds that contain all elements
+            x bounds
+                max(MARKERS) on x = 3
+                min(MARKERS) on x = 0
+
+            y bounds
+                max(MARKERS) on y = 4
+                min(MARKERS) on y = 1
+
+        Find the vector between ship and mines 
+            a - # = (0, 2) - (3, 1) = (-3, 1)
+            b - # = (2, 4) - (3, 1) = (-1, 3) Ship to mine vectors SMV
+            c - # = (4, 0) - (3, 1) = (1, -1)
+
+        Find the diaplay bounds
+            x: max(abs(SMV)) * 2 + 1 = 3 * 2 + 1 = 7
+            y: max(abs(SMV)) * 2 + 1 = 3 * 2 + 1 = 7
+                 
+            --           +-
+                .....|..
+                .....|..
+                -----+--
+                ....c|..    
+                ...#.|..    
+                a....|..    
+                .....|..
+                ..b..|..
+            -+           ++
         """
+        
+        xb, yb = self.cuboid.find_element_bounds(self.current_cubby)
+        shift, dimension = self.cuboid.calculate_shift(self.current_cubby)
+        print "\t\t\t", shift, dimension
+
+        blank = []
+        for y in xrange(abs(dimension[Y_INDEX])):
+            row = []
+            for x in xrange(abs(dimension[X_INDEX])):
+                row.append('.')
+            blank.append(row)
+
+        temp = self.cuboid.matrix[yb[0][Y_INDEX]:yb[1][Y_INDEX]+1]
+        for i, row in enumerate(temp):
+            temp_row = row[xb[0][X_INDEX]: xb[1][X_INDEX]+1]
+            temp[i] = temp_row
+
+        if shift in ["++", "+"]:
+            y_start = len(blank) - len(temp)
+            x_start = len(blank[0]) - len(temp[0])
+        elif shift in ["--", "-"]:
+            y_start = 0
+            x_start = 0
+        elif shift == "+-":
+            y_start = 0
+            x_start = len(blank[0]) - len(temp[0])
+        elif shift == "-+":
+            y_start = len(blank) - len(temp)
+            x_start = 0
+
+        else:
+            print ":/"
+
+
+        for y, row in enumerate(temp, start=y_start):
+            for x, cubby in enumerate(row, start=x_start):
+                blank[y][x] = cubby.z
+
         lines = []
-        for row in self.cuboid.graph():
+        for row in blank:
             lines.append(''.join(row))
         return '\n'.join(lines)
 
@@ -441,7 +551,7 @@ if __name__ == "__main__":
 
     parser.add_argument('field_file', help='path to field file')
     parser.add_argument('script_file', help='path to script file')
-    parser.add_argument('--show-ship', action='store_true')
+    parser.add_argument('--show-ship', action='store_true', help="shows the # symbol for where the ship is in the graph")
 
     args = parser.parse_args()
 
