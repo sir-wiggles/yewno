@@ -1,4 +1,5 @@
 import string
+import argparse
 
 # These are the valid commands that can be entered into a script file
 # Direction name mappings 
@@ -437,6 +438,19 @@ class Ship(object):
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-f', '--field-file', help='path to field file')
+    parser.add_argument('-s', '--script-file', help='path to script file')
+    parser.add_argument('-d', '--debug', action='store_true')
+    parser.add_argument('--show-ship', action='store_true')
+
+    args = parser.parse_args()
+
+    args.field_file
+    args.script_file
+    args.debug
 
     field = '''..Z..
                .....
