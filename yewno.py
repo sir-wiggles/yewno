@@ -340,7 +340,6 @@ class Ship(object):
         
         xb, yb = self.cuboid.find_element_bounds(self.current_cubby)
         shift, dimension = self.cuboid.calculate_shift(self.current_cubby)
-        print "\t\t\t", shift, dimension
 
         blank = []
         for y in xrange(abs(dimension[Y_INDEX])):
@@ -349,29 +348,24 @@ class Ship(object):
                 row.append('.')
             blank.append(row)
 
-        temp = self.cuboid.matrix[yb[0][Y_INDEX]:yb[1][Y_INDEX]+1]
-        for i, row in enumerate(temp):
-            temp_row = row[xb[0][X_INDEX]: xb[1][X_INDEX]+1]
-            temp[i] = temp_row
+        sub = self.cuboid.matrix[yb[0][Y_INDEX]:yb[1][Y_INDEX]+1]
+        for i, row in enumerate(sub):
+            sub[i] = row[xb[0][X_INDEX]: xb[1][X_INDEX]+1]
 
         if shift in ["++", "+"]:
-            y_start = len(blank) - len(temp)
-            x_start = len(blank[0]) - len(temp[0])
+            y_start = len(blank) - len(sub)
+            x_start = len(blank[0]) - len(sub[0])
         elif shift in ["--", "-"]:
             y_start = 0
             x_start = 0
         elif shift == "+-":
             y_start = 0
-            x_start = len(blank[0]) - len(temp[0])
+            x_start = len(blank[0]) - len(sub[0])
         elif shift == "-+":
-            y_start = len(blank) - len(temp)
+            y_start = len(blank) - len(sub)
             x_start = 0
 
-        else:
-            print ":/"
-
-
-        for y, row in enumerate(temp, start=y_start):
+        for y, row in enumerate(sub, start=y_start):
             for x, cubby in enumerate(row, start=x_start):
                 blank[y][x] = cubby.z
 
