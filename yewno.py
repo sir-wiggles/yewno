@@ -24,9 +24,9 @@ FAIL = 'fail'
 SHIP_MARKER = '#'
 MINE_PASSED_MARKER = '*'
 EMPTY_SPACE_MARKER = '.'
-# Put the passed marker at the benning of the mine list so when we're 
-# decending into the depths, and indexing the new value for the mine,
-# we can easly determine if we've hit a mine
+# Put the passed marker at the beginning of the mine list so when we're 
+# descending into the depths, and indexing the new value for the mine,
+# we can easily determine if we've hit a mine
 MINE_MARKERS = MINE_PASSED_MARKER + string.ascii_letters
 
 # Positions of x, y, z values in tuples passed around in various places
@@ -74,7 +74,7 @@ class Cuboid(object):
     neighbors.
 
     For example:
-    With the givin Cuboid
+    With the given Cuboid
         cuboid = [
             [0, 1, 2],      North
             [3, 4, 5],  West  +  East
@@ -154,13 +154,16 @@ class Cuboid(object):
     def update_depths(self):
         """
         When a ship moves down, it come closer to the mines that remain.
-        This will iterate throught all known remaining mines and update 
+        This will iterate through all known remaining mines and update 
         their depth letter
         """
         for _, _, mine in self.mine_locations:
             mine.update_depth()
 
     def find_element_bounds(self, ship):
+        """
+        Finds the smallest possible box that contains all mines plus ship
+        """
         ml = self.mine_locations[:]
         ml.append((ship.x, ship.y, ship))
 
@@ -176,6 +179,10 @@ class Cuboid(object):
         return (x_min, x_max), (y_min, y_max)
 
     def calculate_shift(self, ship):
+        """
+        Calculates the quadrant with the most space with respect to the ship
+        and the dimensions of the new graph
+        """
         x = y = 0
         xs = ''
         ys = ''
@@ -249,8 +256,8 @@ class Cubby(object):
 
     def link(self, direction, cubby):
         """
-        link this cubby with another cubby with the given direction.
-        direction should be a string.
+        link this Cubby with another Cubby with the given direction.
+        Direction should be a string.
         """
         setattr(self, direction, cubby)
         return self
@@ -264,7 +271,7 @@ class Cubby(object):
 
     def __repr__(self):
         """
-        Very helpful for debuggin, prints out spaec letter and coordinates
+        Very helpful for debugging, prints out space letter and coordinates
         """
         return '%s (%+d, %+d)' % (self.z, self.x, self.y)
 
@@ -272,7 +279,7 @@ class Cubby(object):
 class Ship(object):
     """
     Ship is the object in the Cuboid that can destroy mines. It jumps around
-    from cubby to cubby occupying that cubby
+    from Cubby to Cubby occupying that Cubby
     """
 
     def __init__(self, cuboid, script_file, show_ship=False):
@@ -322,7 +329,7 @@ class Ship(object):
             b - # = (2, 4) - (3, 1) = (-1, 3) Ship to mine vectors SMV
             c - # = (4, 0) - (3, 1) = (1, -1)
 
-        Find the diaplay bounds
+        Find the display bounds
             x: max(abs(SMV)) * 2 + 1 = 3 * 2 + 1 = 7
             y: max(abs(SMV)) * 2 + 1 = 3 * 2 + 1 = 7
                  
@@ -330,17 +337,25 @@ class Ship(object):
                 .....|..
                 .....|..
                 -----+--
-                ....c|..    
+                @...c|..    
                 ...#.|..    
                 a....|..    
                 .....|..
                 ..b..|..
             -+           ++
+
+            x: sign of the max abs(SMV.x)
+            y: sign of the max abs(SMV.y) -> element in ['--', '+-', '-+', '++', '-', '+']
+
+            This symbol will indicate how to shift the sub matrix in the blank matrix
+
+        This just feels so wrong.
         """
         
         xb, yb = self.cuboid.find_element_bounds(self.current_cubby)
         shift, dimension = self.cuboid.calculate_shift(self.current_cubby)
 
+        # this blank matrix will encompass the Cuboid matrix
         blank = []
         for y in xrange(abs(dimension[Y_INDEX])):
             row = []
@@ -348,14 +363,17 @@ class Ship(object):
                 row.append('.')
             blank.append(row)
 
+        # slice up the matrix to account for the cuboid shrinking. 
+        # We do this so it can properly fix inside the blank matrix
         sub = self.cuboid.matrix[yb[0][Y_INDEX]:yb[1][Y_INDEX]+1]
         for i, row in enumerate(sub):
             sub[i] = row[xb[0][X_INDEX]: xb[1][X_INDEX]+1]
 
+        # decide how the sub matrix should be shifted within the blank matrix
         if shift in ["++", "+"]:
             y_start = len(blank) - len(sub)
             x_start = len(blank[0]) - len(sub[0])
-        elif shift in ["--", "-"]:
+        elif shift in ["--", "-", ""]:
             y_start = 0
             x_start = 0
         elif shift == "+-":
@@ -364,17 +382,22 @@ class Ship(object):
         elif shift == "-+":
             y_start = len(blank) - len(sub)
             x_start = 0
+        else:
+            print ":P", shift
 
+        # take the elements from the sub matrix and place them at 
+        # appropriate coordinate
         for y, row in enumerate(sub, start=y_start):
             for x, cubby in enumerate(row, start=x_start):
                 blank[y][x] = cubby.z
 
+        # put all the lines together for printing
         lines = []
         for row in blank:
             lines.append(''.join(row))
         return '\n'.join(lines)
 
-    def execute_command_scrip(self):
+    def execute_command_scrip_file(self):
         """
         run takes the script and executes the commands in that script
         """
@@ -383,17 +406,7 @@ class Ship(object):
 
             print "Step %d\n\n%s\n\n%s\n" % (step_count, self.radar(), command)
 
-            torpedoe, movement = self._handle_command_line(command)
-
-            if torpedoe:
-                self._handle_torpedoe(torpedoe)
-
-            if movement:
-                self._handle_movement(movement)
-
-            # update depths before checking scores to see if we have passed any mines
-            # in this turn
-            self.cuboid.update_depths()
+            self._execute_command(command)
 
             # Checks if the current state is pass fail or still running
             pass_fail, score = self.check_score()
@@ -401,6 +414,19 @@ class Ship(object):
                 print "%s\n\n%s %s" % (self.radar(), pass_fail, score)
                 break
             print "%s\n" % self.radar()
+
+    def _execute_command(self, command):
+        torpedoe, movement = self._handle_command_line(command)
+
+        if torpedoe:
+            self._handle_torpedoe(torpedoe)
+
+        if movement:
+            self._handle_movement(movement)
+
+        # update depths before checking scores to see if we have passed any mines
+        # in this turn
+        self.cuboid.update_depths()
 
     def check_score(self):
         """
@@ -443,7 +469,7 @@ class Ship(object):
 
     def _handle_command_line(self, command_line):
         # split the line on space and filter out anything that is an empty string.
-        # Empty strings would occure if you have a command and a movement seperated
+        # Empty strings would occur if you have a command and a movement separated 
         # by more than one space.
         commands = filter(lambda c: c != "", command_line.split(' '))
 
@@ -453,7 +479,7 @@ class Ship(object):
             torpedoe = torpedoe if torpedoe in FIRING_PATTERN_MAP else None
             movement = movement if movement in MOVEMENT_MAP else None
         elif len(commands) == 1:
-            # one arg could mean a movement or a torpedoe so we need to figure that out.
+            # one arg could mean a movement or a torpedo so we need to figure that out.
             command = commands[0]
             if command in MOVEMENT_MAP:
                 movement = command
@@ -473,34 +499,34 @@ class Ship(object):
 
         # Get the firing pattern out of the mapping.  This will be a
         # list of tuples where each tuple is a vector representing 
-        # eight points on a compus
+        # eight points on a compass
         pattern = FIRING_PATTERN_MAP[torpedoe]
     
         # handle each pattern
         for p in pattern:
             # Pulling the pattern out of the MOVEMENT_MAP will give us the
-            # compus directions i.e. north, south, ...
+            # compass directions i.e. north, south, ...
             directions = MOVEMENT_MAP[p]
 
             # Don't change the ships current Cubby, so we'll copy it and 
             # do operations on the copy
             temp_cubby = self.current_cubby 
 
-            # Handle the compus moves from the directions. This is a list of
-            # compus directions at most two and at least one
+            # Handle the compass moves from the directions. This is a list of
+            # compass directions at most two and at least one
             for move in directions:
                 # because the outer ring of the matrix doesn't have neighbors for 
                 # some directions, it's possible to have temp_cubby as None in which 
-                # case AttributeErros will occure if we don't check for them
+                # case AttributeErros will occur if we don't check for them
                 if temp_cubby is None:
                     break
 
                 # If the direction was down, we're not changing to a different
-                # Cubby but handeling the one we're on. This is a special case
+                # Cubby but handling the one we're on. This is a special case
                 if move == DOWN:
                     break
 
-                # get the attribute from the temp Cubby that is the move compus string
+                # get the attribute from the temp Cubby that is the move compass string
                 # For example let's say directions is ["north", "west"] then move
                 # will first be "north" getting the "north" neighbor and saving that
                 # as the temp_cubby and doing the process again for the second command
@@ -525,7 +551,7 @@ class Ship(object):
         if self.show_ship:
             self.current_cubby.z = self._previous_cubby_marker
 
-        # Move the ship to the cubby indicated by the movement
+        # Move the ship to the Cubby indicated by the movement
         self.current_cubby = getattr(self.current_cubby, movement)
 
         if self.show_ship:
@@ -534,7 +560,7 @@ class Ship(object):
 
     def __repr__(self):
         """
-        Again helpful for debuggin
+        Again helpful for debugging
         """
         return '(%+d, %+d, %+d)' % (self.x, self.y, self.z)
 
@@ -554,5 +580,5 @@ if __name__ == "__main__":
 
     cuboid = Cuboid(ff)
     ship = Ship(cuboid, sf, show_ship=args.show_ship)
-    ship.execute_command_scrip()
+    ship.execute_command_scrip_file()
 
