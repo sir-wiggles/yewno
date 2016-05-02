@@ -95,10 +95,12 @@ class Cuboid(object):
 
     Neighbors are simple attributes on the Cubby itself.
     """
-    def __init__(self, field):
+    def __init__(self, field_file):
 
         self.mine_locations = []
-        fields = map(lambda x: x.strip(), field.split('\n'))
+
+        fields = map(lambda x: x.strip(), field_file.readlines())
+        fields = filter(lambda f: f != '', fields)
 
         matrix = []
         cubby_id = 0
@@ -149,7 +151,7 @@ class Cuboid(object):
             display.append(line)
         return display
 
-    def update_depths(self, depth):
+    def update_depths(self):
         """
         When a ship moves down, it come closer to the mines that remain.
         This will iterate throught all known remaining mines and update 
@@ -202,7 +204,7 @@ class Cubby(object):
         """
         Will decrease the depth and set the new space letter.
         """
-        self.z = string.ascii_letters[-self.depth-3]
+        self.z = MINE_MARKERS[-self.depth-2]
         if self.z == MINE_PASSED_MARKER:
             self.mine_passed = True
             return 
@@ -236,9 +238,11 @@ class Ship(object):
     from cubby to cubby occupying that cubby
     """
 
-    def __init__(self, cuboid):
+    def __init__(self, cuboid, script_file, show_ship=False):
 
         self.cuboid = cuboid
+        self.show_ship = show_ship
+        self.commands = map(lambda c: c.strip(), script_file.readlines())
 
         # set the ship at the center of the cuboid zero depth
         self.x = cuboid.dimensions[0]/2 
@@ -250,12 +254,12 @@ class Ship(object):
         self.number_of_vollys_fired = 0
         self.number_of_moves_made = 0
         self.number_of_initial_mines = len(self.cuboid.mine_locations)
+        self.number_of_commands_left = len(self.commands)
         self.starting_score = 10 * self.number_of_initial_mines
 
-        # TODO: remove before sending
-        self._previous_cubby_marker = self.current_cubby.z
-        self.current_cubby.z = SHIP_MARKER
-        # TODO: remove before sending
+        if show_ship:
+            self._previous_cubby_marker = self.current_cubby.z
+            self.current_cubby.z = SHIP_MARKER
 
     def radar(self):
         """
@@ -266,18 +270,14 @@ class Ship(object):
             lines.append(''.join(row))
         return '\n'.join(lines)
 
-    def run(self, script):
+    def execute_command_scrip(self):
         """
         run takes the script and executes the commands in that script
         """
-        commands = map(lambda x: x.strip(), script.split('\n'))
-        self.number_of_commands_left = len(commands)
-        for step_count, command in enumerate(commands, start=1):
+        for step_count, command in enumerate(self.commands, start=1):
             self.number_of_commands_left -= 1
 
-            print "Step %d\n" % step_count
-            print "%s\n" % self.radar()
-            print "%s\n" % command
+            print "Step %d\n\n%s\n\n%s\n" % (step_count, self.radar(), command)
 
             torpedoe, movement = self._handle_command_line(command)
 
@@ -287,14 +287,15 @@ class Ship(object):
             if movement:
                 self._handle_movement(movement)
 
+            # update depths before checking scores to see if we have passed any mines
+            # in this turn
+            self.cuboid.update_depths()
+
+            # Checks if the current state is pass fail or still running
             pass_fail, score = self.check_score()
             if pass_fail is not None:
-                print "%s\n" % self.radar()
-                print '%s %s' % (pass_fail, score)
-                return 
-            self.cuboid.update_depths(self.z)
-            step_count += 1
-
+                print "%s\n\n%s %s" % (self.radar(), pass_fail, score)
+                break
             print "%s\n" % self.radar()
 
     def check_score(self):
@@ -417,18 +418,15 @@ class Ship(object):
         self.x += x
         self.y += y
 
-        # TODO: remove befor sending
-        self.current_cubby.z = self._previous_cubby_marker
-        # TODO: remove befor sending
+        if self.show_ship:
+            self.current_cubby.z = self._previous_cubby_marker
 
         # Move the ship to the cubby indicated by the movement
         self.current_cubby = getattr(self.current_cubby, movement)
 
-        # TODO: remove before sending
-        self._previous_cubby_marker = self.current_cubby.z
-        self.current_cubby.z = SHIP_MARKER
-        # TODO: remove before sending
-
+        if self.show_ship:
+            self._previous_cubby_marker = self.current_cubby.z
+            self.current_cubby.z = SHIP_MARKER
 
     def __repr__(self):
         """
@@ -441,33 +439,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-f', '--field-file', help='path to field file')
-    parser.add_argument('-s', '--script-file', help='path to script file')
-    parser.add_argument('-d', '--debug', action='store_true')
+    parser.add_argument('field_file', help='path to field file')
+    parser.add_argument('script_file', help='path to script file')
     parser.add_argument('--show-ship', action='store_true')
 
     args = parser.parse_args()
 
-    args.field_file
-    args.script_file
-    args.debug
+    ff = open(args.field_file, 'rb')
+    sf = open(args.script_file, 'rb')
 
-    field = '''..Z..
-               .....
-               Z...Z
-               .....
-               ..Z..'''
-
-    script = '''north
-                delta south
-                west
-                gamma east
-                east 
-                gamma west
-                south
-                delta '''
-
-    cuboid = Cuboid(field)
-    ship = Ship(cuboid)
-    ship.run(script)
+    cuboid = Cuboid(ff)
+    ship = Ship(cuboid, sf, show_ship=args.show_ship)
+    ship.execute_command_scrip()
 
